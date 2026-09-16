@@ -9,16 +9,28 @@ Run locally:
 Then open http://127.0.0.1:8000/docs for an interactive test page.
 """
 
-from fastapi import FastAPI, Depends, HTTPException
+import os
+
+from fastapi import FastAPI, Depends, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
 import models, schemas, crud
 from database import engine, get_db, Base
+from email_utils import send_developer_email
 
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="OPEN STORE API", version="0.1.0")
+
+ADMIN_API_KEY = os.environ.get("ADMIN_API_KEY")
+
+
+def require_admin(x_admin_key: str = Header(default=None)):
+    """Checks the X-Admin-Key header against ADMIN_API_KEY (set on Render).
+    Blocks verify/authorize/host-binary so only you can approve apps."""
+    if not ADMIN_API_KEY or x_admin_key != ADMIN_API_KEY:
+        raise HTTPException(401, "Invalid or missing admin key")
 
 # Allows the website (and later the mobile app) to call this API from
 # a different domain. Tighten this to your real domain once you have one.
@@ -63,15 +75,19 @@ def get_notice(app_id: str, db: Session = Depends(get_db)):
 
 @app.post("/apps/{app_id}/contact", response_model=schemas.AppRecordOut)
 def attempt_contact(app_id: str, db: Session = Depends(get_db)):
-    """Sends (or attempts to send) the single developer message.
-    NOTE: actual email delivery isn't wired up yet — see the TODO below."""
+    """Sends the single developer message by real email."""
     record = crud.get_app(db, app_id)
     if not record:
         raise HTTPException(404, "App not found")
 
-    # TODO: replace this with a real email-sending call, then pass the
-    # actual delivered=True/False result in below instead of this stand-in.
-    delivered = None if record.developer_contact_email is None else True
+    if record.developer_contact_email is None:
+        delivered = None
+    else:
+        delivered = send_developer_email(
+            record.developer_contact_email,
+            record.developer_name or "Unknown Developer",
+            record.app_name,
+        )
 
     return crud.record_contact_attempt(db, record, delivered)
 
@@ -93,8 +109,12 @@ def developer_contacted(app_id: str, db: Session = Depends(get_db)):
 
 
 @app.post("/apps/{app_id}/verify", response_model=schemas.AppRecordOut)
-def verify_rights(app_id: str, data: schemas.VerifyIn, db: Session = Depends(get_db)):
-    """Admin-only in the real app — add authentication before going live."""
+def verify_rights(
+    app_id: str,
+    data: schemas.VerifyIn,
+    db: Session = Depends(get_db),
+    _admin=Depends(require_admin),
+):
     record = crud.get_app(db, app_id)
     if not record:
         raise HTTPException(404, "App not found")
@@ -102,7 +122,12 @@ def verify_rights(app_id: str, data: schemas.VerifyIn, db: Session = Depends(get
 
 
 @app.post("/apps/{app_id}/not-authorized", response_model=schemas.AppRecordOut)
-def not_authorized(app_id: str, data: schemas.NotAuthorizedIn, db: Session = Depends(get_db)):
+def not_authorized(
+    app_id: str,
+    data: schemas.NotAuthorizedIn,
+    db: Session = Depends(get_db),
+    _admin=Depends(require_admin),
+):
     record = crud.get_app(db, app_id)
     if not record:
         raise HTTPException(404, "App not found")
@@ -110,8 +135,12 @@ def not_authorized(app_id: str, data: schemas.NotAuthorizedIn, db: Session = Dep
 
 
 @app.post("/apps/{app_id}/authorize", response_model=schemas.AppRecordOut)
-def authorize(app_id: str, data: schemas.AuthorizeIn, db: Session = Depends(get_db)):
-    """Admin-only in the real app — add authentication before going live."""
+def authorize(
+    app_id: str,
+    data: schemas.AuthorizeIn,
+    db: Session = Depends(get_db),
+    _admin=Depends(require_admin),
+):
     record = crud.get_app(db, app_id)
     if not record:
         raise HTTPException(404, "App not found")
@@ -122,8 +151,12 @@ def authorize(app_id: str, data: schemas.AuthorizeIn, db: Session = Depends(get_
 
 
 @app.post("/apps/{app_id}/host-binary", response_model=schemas.AppRecordOut)
-def host_binary(app_id: str, binary_url: str, db: Session = Depends(get_db)):
-    """Admin-only in the real app — add authentication before going live."""
+def host_binary(
+    app_id: str,
+    binary_url: str,
+    db: Session = Depends(get_db),
+    _admin=Depends(require_admin),
+):
     record = crud.get_app(db, app_id)
     if not record:
         raise HTTPException(404, "App not found")
