@@ -13,7 +13,7 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./appnova.db")
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./open-store.db")
 
 # Render's Postgres URL sometimes starts with "postgres://" — SQLAlchemy
 # needs "postgresql://". Fix it automatically so you don't have to.

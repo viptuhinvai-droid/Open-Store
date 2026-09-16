@@ -1,5 +1,5 @@
 """
-AppNova backend API.
+OPEN STORE backend API.
 
 This is the ONE API that both the website and (later) the mobile app will
 call — so all workflow logic lives here once, not duplicated per client.
@@ -18,7 +18,7 @@ from .database import engine, get_db, Base
 
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="AppNova API", version="0.1.0")
+app = FastAPI(title="OPEN STORE API", version="0.1.0")
 
 # Allows the website (and later the mobile app) to call this API from
 # a different domain. Tighten this to your real domain once you have one.
@@ -32,7 +32,7 @@ app.add_middleware(
 
 @app.get("/")
 def root():
-    return {"status": "AppNova API is running"}
+    return {"status": "OPEN STORE API is running"}
 
 
 @app.post("/apps", response_model=schemas.AppRecordOut)

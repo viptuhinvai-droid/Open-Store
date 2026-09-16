@@ -1,7 +1,7 @@
 """
-Database models for AppNova.
+Database models for OPEN STORE.
 
-Mirrors the workflow rules from the AppNova policy:
+Mirrors the workflow rules from the OPEN STORE policy:
   DISCOVERED -> CONTACTED -> VERIFIED -> AUTHORIZED
 
 binary_hosted can only become True once stage == AUTHORIZED — enforced in

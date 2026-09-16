@@ -1,5 +1,5 @@
 """
-All state-changing rules for the AppNova developer-contact & distribution
+All state-changing rules for the OPEN STORE developer-contact & distribution
 workflow live here — this is the one place that enforces them, so no API
 route or future caller can bypass a gate by writing directly to the DB.
 
@@ -133,7 +133,7 @@ def host_binary(db: Session, record: models.AppRecord, binary_url: str) -> model
         raise PermissionError("Cannot host binary — application is not AUTHORIZED.")
     record.binary_hosted = True
     record.binary_url = binary_url
-    _log(db, record, "BINARY_HOSTED", "APK/AAB made available on AppNova")
+    _log(db, record, "BINARY_HOSTED", "APK/AAB made available on OPEN STORE")
     db.commit()
     db.refresh(record)
     return record
@@ -141,5 +141,5 @@ def host_binary(db: Session, record: models.AppRecord, binary_url: str) -> model
 
 def distribution_notice(record: models.AppRecord) -> str:
     if record.stage == models.Stage.AUTHORIZED and record.binary_hosted:
-        return "Available for download on AppNova."
+        return "Available for download on OPEN STORE."
     return UNVERIFIED_NOTICE
