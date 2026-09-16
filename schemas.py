@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel
 
-from .models import Stage, ContactStatus
+from models import Stage, ContactStatus
 
 
 class AppDiscoverIn(BaseModel):

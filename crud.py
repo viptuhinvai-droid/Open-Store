@@ -14,7 +14,7 @@ Rules enforced:
 
 from sqlalchemy.orm import Session
 
-from . import models, schemas
+import models, schemas
 
 UNVERIFIED_NOTICE = "Developer distribution authorization has not been verified."
 
