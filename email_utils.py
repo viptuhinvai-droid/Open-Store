@@ -59,5 +59,6 @@ def send_developer_email(to_email: str, developer_name: str, app_name: str) -> b
             server.login(SMTP_EMAIL, SMTP_PASSWORD)
             server.sendmail(SMTP_EMAIL, [to_email], msg.as_string())
         return True
-    except Exception:
+    except Exception as e:
+        print(f"EMAIL SEND FAILED: {e}")
         return False
