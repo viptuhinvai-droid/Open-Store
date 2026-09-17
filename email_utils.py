@@ -13,8 +13,22 @@ How to get a Gmail App Password:
 """
 
 import os
+import socket
 import smtplib
 from email.mime.text import MIMEText
+
+# Render's free-tier network can't reach IPv6 addresses ("Network is
+# unreachable"), and Gmail's SMTP hostname sometimes resolves to an IPv6
+# address first. This forces all DNS lookups in this process to return
+# only IPv4 addresses, so the connection actually goes through.
+_orig_getaddrinfo = socket.getaddrinfo
+
+
+def _ipv4_only_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+    return _orig_getaddrinfo(host, port, socket.AF_INET, type, proto, flags)
+
+
+socket.getaddrinfo = _ipv4_only_getaddrinfo
 
 SMTP_EMAIL = os.environ.get("SMTP_EMAIL")
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD")
