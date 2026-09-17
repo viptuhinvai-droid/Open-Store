@@ -1,41 +1,32 @@
 """
-Sends the developer outreach message by real email, using Gmail SMTP.
+Sends the developer outreach message via Mailjet's HTTP email API.
 
-Needs two environment variables set on Render:
-  SMTP_EMAIL    - your Gmail address, e.g. openstore.team@gmail.com
-  SMTP_PASSWORD - a Gmail "App Password" (NOT your normal Gmail password)
+Render blocks outbound SMTP traffic on all plans, so a direct email send
+via smtplib always times out there — this uses a plain HTTPS API call
+instead, which isn't blocked.
 
-How to get a Gmail App Password:
-  1. Turn on 2-Step Verification on the Gmail account (Google Account -> Security)
-  2. Go to https://myaccount.google.com/apppasswords
-  3. Create one for "Mail" -> copy the 16-character password
-  4. Put that in Render's SMTP_PASSWORD env var (not your real Gmail password)
+Needs three environment variables set on Render:
+  MAILJET_API_KEY    - from Mailjet dashboard -> Account Settings -> API Key Management
+  MAILJET_API_SECRET - the matching Secret Key from the same page
+  SMTP_EMAIL          - the sender address, must be a verified sender in Mailjet
+
+How to set up Mailjet (free, no credit card):
+  1. Sign up at https://www.mailjet.com
+  2. Go to Account Settings -> Sender addresses & domains -> Add a sender
+     address, use your email, click the verification link Mailjet emails you
+  3. Go to Account Settings -> API Key Management -> copy the API Key and
+     Secret Key
+  4. Put those in Render's MAILJET_API_KEY and MAILJET_API_SECRET env vars,
+     and your verified email in SMTP_EMAIL
 """
 
 import os
-import socket
-import smtplib
-from email.mime.text import MIMEText
+import requests
+from requests.auth import HTTPBasicAuth
 
-# Render's free-tier network can't reach IPv6 addresses ("Network is
-# unreachable"), and Gmail's SMTP hostname sometimes resolves to an IPv6
-# address first. This forces all DNS lookups in this process to return
-# only IPv4 addresses, so the connection actually goes through.
-_orig_getaddrinfo = socket.getaddrinfo
-
-
-def _ipv4_only_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
-    return _orig_getaddrinfo(host, port, socket.AF_INET, type, proto, flags)
-
-
-socket.getaddrinfo = _ipv4_only_getaddrinfo
-
+MAILJET_API_KEY = os.environ.get("MAILJET_API_KEY")
+MAILJET_API_SECRET = os.environ.get("MAILJET_API_SECRET")
 SMTP_EMAIL = os.environ.get("SMTP_EMAIL")
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD")
-import ssl
-
-SMTP_HOST = "smtp.gmail.com"
-SMTP_PORT = 587
 
 
 def generate_developer_message(developer_name: str, app_name: str) -> str:
@@ -58,24 +49,35 @@ def generate_developer_message(developer_name: str, app_name: str) -> str:
 
 
 def send_developer_email(to_email: str, developer_name: str, app_name: str) -> bool:
-    """Returns True if the email was sent, False if it failed (bad address,
-    no credentials configured, connection error, etc.) — never raises, so
-    a bad send just becomes a normal MESSAGE_UNDELIVERABLE status."""
-    if not SMTP_EMAIL or not SMTP_PASSWORD:
+    """Returns True if Mailjet accepted the email, False otherwise — never
+    raises, so a bad send just becomes a normal MESSAGE_UNDELIVERABLE
+    status."""
+    if not MAILJET_API_KEY or not MAILJET_API_SECRET or not SMTP_EMAIL:
+        print("EMAIL SEND FAILED: MAILJET_API_KEY/SECRET or SMTP_EMAIL not set")
         return False
 
     body = generate_developer_message(developer_name, app_name)
-    msg = MIMEText(body)
-    msg["Subject"] = f"Your application on OPEN STORE — {app_name}"
-    msg["From"] = SMTP_EMAIL
-    msg["To"] = to_email
 
     try:
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as server:
-            server.starttls(context=ssl.create_default_context())
-            server.login(SMTP_EMAIL, SMTP_PASSWORD)
-            server.sendmail(SMTP_EMAIL, [to_email], msg.as_string())
-        return True
+        response = requests.post(
+            "https://api.mailjet.com/v3.1/send",
+            auth=HTTPBasicAuth(MAILJET_API_KEY, MAILJET_API_SECRET),
+            json={
+                "Messages": [
+                    {
+                        "From": {"Email": SMTP_EMAIL, "Name": "OPEN STORE Team"},
+                        "To": [{"Email": to_email}],
+                        "Subject": f"Your application on OPEN STORE — {app_name}",
+                        "TextPart": body,
+                    }
+                ]
+            },
+            timeout=15,
+        )
+        if response.status_code == 200:
+            return True
+        print(f"EMAIL SEND FAILED: {response.status_code} {response.text}")
+        return False
     except Exception as e:
         print(f"EMAIL SEND FAILED: {e}")
         return False
