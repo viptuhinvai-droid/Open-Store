@@ -23,5 +23,7 @@ services:
         sync: false
       - key: SMTP_EMAIL
         sync: false
-      - key: SMTP_PASSWORD
+      - key: MAILJET_API_KEY
+        sync: false
+      - key: MAILJET_API_SECRET
         sync: false
