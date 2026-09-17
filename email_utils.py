@@ -32,8 +32,10 @@ socket.getaddrinfo = _ipv4_only_getaddrinfo
 
 SMTP_EMAIL = os.environ.get("SMTP_EMAIL")
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD")
+import ssl
+
 SMTP_HOST = "smtp.gmail.com"
-SMTP_PORT = 465
+SMTP_PORT = 587
 
 
 def generate_developer_message(developer_name: str, app_name: str) -> str:
@@ -69,7 +71,8 @@ def send_developer_email(to_email: str, developer_name: str, app_name: str) -> b
     msg["To"] = to_email
 
     try:
-        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as server:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as server:
+            server.starttls(context=ssl.create_default_context())
             server.login(SMTP_EMAIL, SMTP_PASSWORD)
             server.sendmail(SMTP_EMAIL, [to_email], msg.as_string())
         return True
