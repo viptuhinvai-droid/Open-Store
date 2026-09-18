@@ -13,7 +13,8 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import (
-    Column, String, Boolean, DateTime, ForeignKey, Text, Enum as SAEnum
+    Column, String, Boolean, DateTime, ForeignKey, Text, Integer,
+    Enum as SAEnum, UniqueConstraint
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -30,6 +31,11 @@ class Stage(str, enum.Enum):
     CONTACTED = "CONTACTED"
     VERIFIED = "VERIFIED"
     AUTHORIZED = "AUTHORIZED"
+
+
+class Category(str, enum.Enum):
+    APP = "APP"
+    GAME = "GAME"
 
 
 class ContactStatus(str, enum.Enum):
@@ -51,6 +57,7 @@ class AppRecord(Base):
     app_name = Column(String, nullable=False, index=True)
     developer_name = Column(String, nullable=True)
     developer_contact_email = Column(String, nullable=True)
+    category = Column(SAEnum(Category), nullable=False, default=Category.APP)
 
     # Public metadata only — store listing description, icon URL, etc.
     description = Column(Text, nullable=True)
@@ -73,6 +80,9 @@ class AppRecord(Base):
     audit_entries = relationship(
         "AuditEntry", back_populates="app_record", cascade="all, delete-orphan"
     )
+    reviews = relationship(
+        "Review", back_populates="app_record", cascade="all, delete-orphan"
+    )
 
 
 class AuditEntry(Base):
@@ -85,3 +95,35 @@ class AuditEntry(Base):
     timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     app_record = relationship("AppRecord", back_populates="audit_entries")
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    email = Column(String, unique=True, nullable=False, index=True)
+    password_hash = Column(String, nullable=False)
+    name = Column(String, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    reviews = relationship("Review", back_populates="user", cascade="all, delete-orphan")
+
+
+class Review(Base):
+    __tablename__ = "reviews"
+    __table_args__ = (UniqueConstraint("app_id", "user_id", name="uq_app_user_review"),)
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    app_id = Column(UUID(as_uuid=False), ForeignKey("app_records.id"), nullable=False)
+    user_id = Column(UUID(as_uuid=False), ForeignKey("users.id"), nullable=False)
+    rating = Column(Integer, nullable=False)  # 1-5
+    comment = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    app_record = relationship("AppRecord", back_populates="reviews")
+    user = relationship("User", back_populates="reviews")

@@ -31,6 +31,7 @@ def discover_app(db: Session, data: schemas.AppDiscoverIn) -> models.AppRecord:
         developer_contact_email=data.developer_contact_email,
         description=data.description,
         icon_url=data.icon_url,
+        category=data.category,
         stage=models.Stage.DISCOVERED,
         contact_status=models.ContactStatus.UNDER_REVIEW,
     )
@@ -46,8 +47,11 @@ def get_app(db: Session, app_id: str) -> models.AppRecord | None:
     return db.query(models.AppRecord).filter(models.AppRecord.id == app_id).first()
 
 
-def list_apps(db: Session, skip: int = 0, limit: int = 50):
-    return db.query(models.AppRecord).offset(skip).limit(limit).all()
+def list_apps(db: Session, skip: int = 0, limit: int = 50, category: str | None = None):
+    q = db.query(models.AppRecord)
+    if category:
+        q = q.filter(models.AppRecord.category == category)
+    return q.offset(skip).limit(limit).all()
 
 
 def already_contacted(record: models.AppRecord) -> bool:
@@ -143,3 +147,119 @@ def distribution_notice(record: models.AppRecord) -> str:
     if record.stage == models.Stage.AUTHORIZED and record.binary_hosted:
         return "Available for download on OPEN STORE."
     return UNVERIFIED_NOTICE
+
+
+# ---- Account system ----
+
+def get_user_by_email(db: Session, email: str) -> models.User | None:
+    return db.query(models.User).filter(models.User.email == email).first()
+
+
+def get_user(db: Session, user_id: str) -> models.User | None:
+    return db.query(models.User).filter(models.User.id == user_id).first()
+
+
+def create_user(db: Session, email: str, password_hash: str, name: str | None) -> models.User:
+    user = models.User(email=email, password_hash=password_hash, name=name)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+# ---- Reviews & ratings ----
+
+def upsert_review(
+    db: Session, app_id: str, user_id: str, rating: int, comment: str | None
+) -> models.Review:
+    """One review per user per app — a second submission updates the first."""
+    existing = (
+        db.query(models.Review)
+        .filter(models.Review.app_id == app_id, models.Review.user_id == user_id)
+        .first()
+    )
+    if existing:
+        existing.rating = rating
+        existing.comment = comment
+        db.commit()
+        db.refresh(existing)
+        return existing
+
+    review = models.Review(app_id=app_id, user_id=user_id, rating=rating, comment=comment)
+    db.add(review)
+    db.commit()
+    db.refresh(review)
+    return review
+
+
+def get_reviews_for_app(db: Session, app_id: str, skip: int = 0, limit: int = 50):
+    return (
+        db.query(models.Review)
+        .filter(models.Review.app_id == app_id)
+        .order_by(models.Review.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
+
+def get_rating_summary(db: Session, app_id: str) -> tuple[float, int]:
+    from sqlalchemy import func
+    result = (
+        db.query(func.avg(models.Review.rating), func.count(models.Review.id))
+        .filter(models.Review.app_id == app_id)
+        .first()
+    )
+    avg, count = result
+    return (round(float(avg), 2) if avg else 0.0, count or 0)
+
+
+# ---- "For you" recommendations ----
+
+def get_recommendations(db: Session, user_id: str | None, limit: int = 20):
+    """
+    If the user has rated apps 4+ in a category before, prioritize
+    top-rated AUTHORIZED apps in that category they haven't reviewed yet.
+    Falls back to overall top-rated AUTHORIZED apps for everyone else.
+    """
+    from sqlalchemy import func
+
+    base = (
+        db.query(
+            models.AppRecord,
+            func.coalesce(func.avg(models.Review.rating), 0).label("avg_rating"),
+        )
+        .outerjoin(models.Review, models.Review.app_id == models.AppRecord.id)
+        .filter(
+            models.AppRecord.stage == models.Stage.AUTHORIZED,
+            models.AppRecord.binary_hosted == True,  # noqa: E712
+        )
+        .group_by(models.AppRecord.id)
+    )
+
+    preferred_categories = []
+    reviewed_app_ids = set()
+    if user_id:
+        liked = (
+            db.query(models.AppRecord.category)
+            .join(models.Review, models.Review.app_id == models.AppRecord.id)
+            .filter(models.Review.user_id == user_id, models.Review.rating >= 4)
+            .distinct()
+            .all()
+        )
+        preferred_categories = [c[0] for c in liked]
+        reviewed_app_ids = {
+            r.app_id for r in db.query(models.Review).filter(models.Review.user_id == user_id)
+        }
+
+    rows = base.order_by(func.coalesce(func.avg(models.Review.rating), 0).desc()).all()
+
+    if preferred_categories:
+        preferred = [
+            r for r in rows
+            if r[0].category in preferred_categories and r[0].id not in reviewed_app_ids
+        ]
+        rest = [r for r in rows if r not in preferred]
+        rows = preferred + rest
+
+    return [r[0] for r in rows[:limit]]

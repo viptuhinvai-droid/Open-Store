@@ -27,3 +27,5 @@ services:
         sync: false
       - key: MAILJET_API_SECRET
         sync: false
+      - key: JWT_SECRET
+        sync: false
