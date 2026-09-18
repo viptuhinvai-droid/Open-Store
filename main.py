@@ -35,13 +35,12 @@ def require_admin(x_admin_key: str = Header(default=None)):
 
 
 def get_current_user(
-    authorization: str = Header(default=None), db: Session = Depends(get_db)
+    x_auth_token: str = Header(default=None), db: Session = Depends(get_db)
 ):
-    """Requires a valid 'Authorization: Bearer <token>' header."""
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(401, "Missing or invalid Authorization header")
-    token = authorization.removeprefix("Bearer ").strip()
-    user_id = decode_token(token)
+    """Requires a valid 'X-Auth-Token' header containing the login token."""
+    if not x_auth_token:
+        raise HTTPException(401, "Missing X-Auth-Token header")
+    user_id = decode_token(x_auth_token)
     if not user_id:
         raise HTTPException(401, "Invalid or expired token")
     user = crud.get_user(db, user_id)
@@ -51,13 +50,13 @@ def get_current_user(
 
 
 def get_optional_user(
-    authorization: str = Header(default=None), db: Session = Depends(get_db)
+    x_auth_token: str = Header(default=None), db: Session = Depends(get_db)
 ):
     """Like get_current_user, but returns None instead of raising when
     there's no token — for endpoints that work for guests too."""
-    if not authorization or not authorization.startswith("Bearer "):
+    if not x_auth_token:
         return None
-    user_id = decode_token(authorization.removeprefix("Bearer ").strip())
+    user_id = decode_token(x_auth_token)
     if not user_id:
         return None
     return crud.get_user(db, user_id)
